@@ -18,9 +18,6 @@ import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabaseClient";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
-const cn = (...classes: (string | boolean | undefined)[]) =>
-  classes.filter(Boolean).join(" ");
-
 const AUTO_EXCLUDED_KEYS = ["id", "created_at", "updated_at", "raw_enrichment"];
 
 export default function LeadManagementPage() {
@@ -154,37 +151,101 @@ export default function LeadManagementPage() {
   const currentRows = filteredData.slice(indexOfFirst, indexOfLast);
   const totalPages = Math.ceil(filteredData.length / rowsPerPage);
 
-  /* ================= UPLOAD ================= */
   const handleUpload = async () => {
+    console.log(uploadState, "===click")
     if (!uploadState.file) return;
 
-    setUploadState((p) => ({ ...p, isUploading: true, error: "" }));
+    setUploadState((p) => ({
+      ...p,
+      isUploading: true,
+      error: "",
+      success: "",
+    }));
+
+    const excelSerialToISO = (serial: number) => {
+      const utcDays = serial - 25569;
+      const utcValue = utcDays * 86400;
+      return new Date(utcValue * 1000).toISOString();
+    };
+    const normalizeNumber = (value: any): number | null => {
+      if (value === null || value === undefined) return null;
+
+      // If already a number
+      if (typeof value === "number") return value;
+
+      if (typeof value !== "string") return null;
+
+      const cleaned = value
+        .toLowerCase()
+        .replace(/[, ]/g, "")       // remove commas & spaces
+        .replace(/[^0-9.kmb-]/g, ""); // keep numbers + k/m/b
+
+      let multiplier = 1;
+
+      if (cleaned.endsWith("k")) multiplier = 1_000;
+      if (cleaned.endsWith("m")) multiplier = 1_000_000;
+      if (cleaned.endsWith("b")) multiplier = 1_000_000_000;
+
+      const numericPart = parseFloat(cleaned.replace(/[kmb]/g, ""));
+
+      if (isNaN(numericPart)) return null;
+
+      return numericPart * multiplier;
+    };
+
 
     try {
       const buffer = await uploadState.file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array" });
-      const raw = XLSX.utils.sheet_to_json(
-        workbook.Sheets[workbook.SheetNames[0]]
-      );
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows: any[] = XLSX.utils.sheet_to_json(sheet);
 
-      await supabase.from("leads").insert(raw);
+      if (!rawRows.length) {
+        throw new Error("Excel file is empty");
+      }
+
+      const mappedRows = rawRows.map((row) => {
+        return ({
+          company_name: row["identifier-label"] || "",
+          website_url: row["component--field-formatter href"] || "",
+          funding_date: row["component--field-formatter (4)"] ? excelSerialToISO(row["component--field-formatter (4)"]) : "",
+          funding_amount: row["component--field-formatter (6)"] ? normalizeNumber(row["component--field-formatter (6)"]) : "",
+          funding_round: row["component--field-formatter (5)"] || "",
+          location: row["component--field-formatter (8)"] || "",
+          category: row["accent (3)"] || "",
+          industry_tags: row["component--field-formatter (7)"]?.split(", ") || []
+        })
+      });
+
+      /* 4️⃣ Chunked insert to Supabase */
+      const CHUNK_SIZE = 50;
+
+      for (let i = 0; i < mappedRows.length; i += CHUNK_SIZE) {
+        const chunk = mappedRows.slice(i, i + CHUNK_SIZE);
+
+        const { error } = await supabase.from("leads").insert(chunk);
+        if (error) throw error;
+      }
+
+      await fetch(process.env.NEXT_PUBLIC_WEBHOOK_URL as string,);
 
       setUploadState({
         file: null,
         isUploading: false,
-        success: "Excel uploaded successfully",
         error: "",
+        success: `Uploaded ${mappedRows.length} leads & triggered workflow`,
       });
 
       fetchData();
-    } catch (e: any) {
+    } catch (err: any) {
       setUploadState((p) => ({
         ...p,
         isUploading: false,
-        error: e.message || "Upload failed",
+        error: err.message || "Upload failed",
       }));
     }
   };
+
 
   const renderCell = (value: any, colKey: string, index: number) => {
     if (colKey === "__sno") return index;
@@ -221,7 +282,7 @@ export default function LeadManagementPage() {
     return value ?? "-";
   };
 
-  /* ================= UI ================= */
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50 p-6 text-gray-600">
       <div className="max-w-7xl mx-auto space-y-6">
