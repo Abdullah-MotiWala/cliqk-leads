@@ -21,6 +21,16 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 const AUTO_EXCLUDED_KEYS = ["id", "created_at", "updated_at", "raw_enrichment"];
 
 export default function LeadManagementPage() {
+
+  const [scoreCardOpen, setScoreCardOpen] = useState(false);
+  const [scoreModal, setScoreModal] = useState<{
+    open: boolean;
+    data: any;
+  }>({
+    open: false,
+    data: null,
+  });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -132,6 +142,7 @@ export default function LeadManagementPage() {
       const score = Number(row.score || 0);
       const matchesScore =
         filters.scoreRange === "all" ||
+        (filters.scoreRange === "perfect" && score >= 10) ||
         (filters.scoreRange === "high" && score >= 8) ||
         (filters.scoreRange === "medium" && score >= 5 && score <= 7) ||
         (filters.scoreRange === "low" && score > 0 && score <= 4);
@@ -342,6 +353,12 @@ export default function LeadManagementPage() {
             >
               <RotateCw className="h-4 w-4 text-gray-600" />
             </button>
+            <button
+              onClick={() => setScoreCardOpen(true)}
+              className="p-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 shadow-sm"
+            >
+              Score Board
+            </button>
           </div>
 
           <input
@@ -387,6 +404,7 @@ export default function LeadManagementPage() {
               }
             >
               <option value="all">Score (All)</option>
+              <option value="perfect">Perfect (10-15)</option>
               <option value="high">High (8–10)</option>
               <option value="medium">Medium (5–7)</option>
               <option value="low">Low (1–4)</option>
@@ -518,6 +536,104 @@ export default function LeadManagementPage() {
           Connected to Supabase
         </div>
       </div>
+
+      {scoreCardOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+            {/* HEADER */}
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600">
+              <h3 className="text-white text-lg font-semibold">
+                Score Breakdown
+              </h3>
+              <button
+                onClick={() => setScoreCardOpen(false)}
+                className="text-white/80 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* BODY */}
+            <div className="p-6 space-y-4 text-sm text-gray-700">
+
+              {/* Rule Item */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border">
+                <div>
+                  <p className="font-medium text-gray-900">
+                    Funded under 90 days
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Recent funding activity
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
+                  +3 pts
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border">
+                <div>
+                  <p className="font-medium text-gray-900">
+                    Eligible for funding
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Meets funding criteria
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
+                  +2 pts
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border">
+                <div>
+                  <p className="font-medium text-gray-900">
+                    Hiring Marketing Roles
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Indicates resource urgency
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
+                  +5 pts
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border">
+                <div>
+                  <p className="font-medium text-gray-900">
+                    Uses relevant tools
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Indicates tech maturity
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
+                  +5 pts
+                </span>
+              </div>
+
+              {/* SUMMARY */}
+              <div className="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between">
+                <span className="font-semibold text-blue-900">
+                  Maximum Possible Score
+                </span>
+                <span className="text-blue-900 font-bold text-lg">
+                  15
+                </span>
+              </div>
+
+              {/* FOOTNOTE */}
+              <p className="text-xs text-gray-500 mt-2">
+                This score helps quickly identify outreach-ready companies based on
+                recency, eligibility, and operational maturity.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
